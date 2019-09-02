@@ -1,0 +1,10 @@
+toolkit_url: https://github.com/Cognifide/CQ-Unix-Toolkit.git
+instances:
+  protocol: http
+  version: 6.5
+  author:
+    ip: 192.168.2.254
+    port: 4502
+  publish:
+    ip: 192.168.2.254
+    port: 4503
