@@ -15,6 +15,9 @@ toolkit_path = f"{os.getcwd()}CQ-Unix-Toolkit"
 cqls = f"{toolkit_path}/cqls"
 
 
+# TODO: add logger
+# think whether installation logic should be inside CQInstance or CQPackage class
+
 with open('config.yaml') as config_data:
     config = yaml.full_load(config_data)
 
@@ -64,7 +67,8 @@ class CQInstance:
             self.package_dict[package_list[i]] = package_list[i+1]
 
     def package_upload(self, file_path):
-        '''Uploads package to a server, doesn't install it, returns reponse xml'''
+        '''Uploads package to a server, doesn't install it, returns xml in response'''
+        # TODO: should be using package as an argument?
         headers = {
             'Referrer': self.refferer
         }
@@ -78,10 +82,42 @@ class CQInstance:
                 files=form_data,
                 auth=self.auth())
         return response.text
+    
+    def package_install(self, cq_package):
+        '''Installs an existing package'''
+        headers = { 'Referrer': self.refferer }
+        form_data = { 'cmd': (None, 'install') }
+        response = requests.post(
+                f"{self.url}/crx/packmgr/service/script.html{cq_package.path}",
+                files=form_data,
+                auth=self.auth())
+
+        if "no package" in response.text:
+            print(f"Package: {cq_package.name}, version: {cq_package.version} not found")
+            return FAILURE
+        else:
+            print(f"Package: {cq_package.name}, version: {cq_package.version} installed")
+            return SUCCESS
+    
+    def package_rebuild(self, cq_package):
+        '''Rebuild an existing package in CQ'''
+        headers = { 'Referrer': self.refferer }
+        form_data = { 'cmd': (None, 'build') }
+        response = requests.post(
+                f"{self.url}/crx/packmgr/service/script.html{cq_package.path}",
+                files=form_data,
+                auth=self.auth())
+        
+        if "no package" in response.text:
+            print(f"Package: {cq_package.name}, version: {cq_package.version} not found")
+            return FAILURE
+        else:
+            print(f"Package: {cq_package.name}, version: {cq_package.version} installed")
+            return SUCCESS
 
     def package_download(self, cq_package):
         '''Download package from server'''
-        '''TODO: add destination dir as parameter, version as part of downloaded file name'''
+        # TODO: add destination dir as parameter, version as part of downloaded file name
 
         if os.path.isfile(f"{cq_package.name}.zip"):
             print(f"File already exists, please remove it from the {os.getcwd()} directory.")
@@ -126,9 +162,12 @@ if __name__ == "__main__":
 
     author_instance.package_dict_gen()
 
+    bridge_hotfix_PES_285 = CQPackage('bridge-hotfix-PES-285', '1.0.1', 'com.cognifide.zg')
+
     author_instance.package_upload('./bridge-hotfix-PES-285-1.0.1.zip')
+    author_instance.package_rebuild(bridge_hotfix_PES_285)
 
     bridge_core = CQPackage('bridge-core', '6.5.0.0', 'com.cognifide.bridge')
 
-    publish_instance.package_download(bridge_core)
-    publish_instance.package_uninstall(bridge_core)
+    #publish_instance.package_download(bridge_core)
+    #publish_instance.package_uninstall(bridge_core)
