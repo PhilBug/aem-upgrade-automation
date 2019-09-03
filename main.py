@@ -6,15 +6,20 @@ import yaml
 import bs4 as bs
 import requests
 
+'''Constants'''
+SUCCESS = 0
+FAILURE = 1
+
 toolkit_path = f"{os.getcwd()}CQ-Unix-Toolkit"
 '''CQ-Unix-Toolkit shortcuts'''
 cqls = f"{toolkit_path}/cqls"
+
 
 with open('config.yaml') as config_data:
     config = yaml.full_load(config_data)
 
 if os.path.exists(toolkit_path):
-    print("CQ-Unix-Toolkit directory already exists. Running 'git pull'")
+    # print("CQ-Unix-Toolkit directory already exists. Running 'git pull'")
     try:
         cmd.Git(toolkit_path).pull()
     except Exception as e:
@@ -24,46 +29,106 @@ else:
     Repo.clone_from(config['toolkit_url'], toolkit_path)
 
 class CQInstance:
-    def __init__(self, protocol, ip, port):
+    def __init__(self, protocol, ip, port, user='admin', password='admin'):
         self.protocol = protocol
         self.ip = ip
         self.port = port
         self.url = f"{protocol}://{ip}:{port}"
-        self.package_list = ['Run gen_package_list() to generate the list']
+        self.user = user
+        self.password = password
+        self.package_dict = {}
+        self.refferer = f"{self.url}/crx/packmgr"
 
-    def gen_package_list_with_cqls(self):
-        '''Lists all of the packages installed on the instance using cqls'''
-        package_list = sp.Popen([cqls, '-i', self.url],
-                stdout=sp.PIPE,
-                stderr=sp.STDOUT)
-        self.package_list = package_list.communicate()
+    def auth(self):
+        '''Return default auth format for requests'''
+        return self.user, self.password
+
+    # def package_list_gen_cqls(self):
+    #     '''Lists all of the packages installed on the instance using cqls'''
+    #     package_list = sp.Popen([cqls, '-i', self.url],
+    #             stdout=sp.PIPE,
+    #             stderr=sp.STDOUT)
+    #     self.package_list = package_list.communicate()
     
-    def gen_package_list(self):
-        '''Lists all of the packages installed on the instance'''
-        headers = {
-            'Referrer': 'http://192.168.2.254:4503/crx/packmgr'
-        }
-        files = {
-            'cmd': (None, 'ls')
-        }
-        response = requests.post('http://192.168.2.254:4503/crx/packmgr/service.jsp',
+    def package_dict_gen(self):
+        '''Creates a dictionary of all of the packages installed on the instance and its versions'''
+        headers = {'Referrer': self.refferer}
+        form_data = {'cmd': (None, 'ls')}
+        response = requests.post(f"{self.url}/crx/packmgr/service.jsp",
                 headers=headers,
-                files=files,
-                auth=('admin', 'admin'))
-        self.package_list = [name.string for name in bs.BeautifulSoup(response.text, 'xml').find_all('name')]
+                files=form_data,
+                auth=self.auth())
+
+        package_list = [i.text for i in bs.BeautifulSoup(response.text, 'xml').find_all(['name', 'version'])]
+        for i in range(0, len(package_list), 2):
+            self.package_dict[package_list[i]] = package_list[i+1]
+
+    def package_upload(self, file_path):
+        '''Uploads package to a server, doesn't install it, returns reponse xml'''
+        headers = {
+            'Referrer': self.refferer
+        }
+        form_data = {
+            'file' : (file_path, open(file_path, 'rb'), 'appliation/zip', {}),
+            'name': os.path.basename(file_path).rstrip('.zip'),
+            'install': 'false'
+        }
+        response = requests.post(f"{self.url}/crx/packmgr/service.jsp",
+                headers=headers,
+                files=form_data,
+                auth=self.auth())
+        return response.text
+
+    def package_download(self, cq_package):
+        '''Download package from server'''
+        '''TODO: add destination dir as parameter, version as part of downloaded file name'''
+
+        if os.path.isfile(f"{cq_package.name}.zip"):
+            print(f"File already exists, please remove it from the {os.getcwd()} directory.")
+            return
+        
+        response = requests.get(self.url + cq_package.path, auth=self.auth())
+
+        with open(f"{cq_package.name}.zip", 'wb') as f:
+            if response.status_code == 200:
+                f.write(response.content)
+                return SUCCESS
+            else:
+                print(f"Download of a package: {cq_package.name} failed with an error code {response.status_code}")
+                return FAILURE
+
+    def package_uninstall(self, cq_package):
+        '''Uninstall package from server'''
+        headers = {
+            'Referrer': self.refferer
+        }
+        form_data = {
+            'cmd': (None, 'rm'),
+            'name': (None, cq_package.name)
+        }
+        response = requests.post(f"{self.url}/crx/packmgr/service.jsp",
+                headers=headers,
+                files=form_data,
+                auth=self.auth())
+        print(response.status_code, response.text)
 
 class CQPackage:
-    def __init__(self, name, version, path):
+    def __init__(self, name, version, group):
         self.name = name
         self.version = version
-        self.path = path
-
+        self.group = group
+        self.path = f"/etc/packages/{group}/{name}-{version}.zip"
 
 if __name__ == "__main__":
     instances = config['instances']
     author_instance = CQInstance(instances['protocol'], instances['author']['ip'], instances['author']['port'])
-    publish_instance = CQInstance(instances['protocol'], instances['author']['ip'], instances['author']['port'])
+    publish_instance = CQInstance(instances['protocol'], instances['publish']['ip'], instances['publish']['port'])
 
-    author_instance.gen_package_list()
-    for package in author_instance.package_list:
-        print(package)
+    author_instance.package_dict_gen()
+
+    author_instance.package_upload('./bridge-hotfix-PES-285-1.0.1.zip')
+
+    bridge_core = CQPackage('bridge-core', '6.5.0.0', 'com.cognifide.bridge')
+
+    publish_instance.package_download(bridge_core)
+    publish_instance.package_uninstall(bridge_core)
