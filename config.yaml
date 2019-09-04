@@ -8,3 +8,20 @@ instances:
   publish:
     ip: 192.168.2.254
     port: 4503
+packages:
+  path: ./packages
+  install:
+    - bridge-core-6.5.0.0.zip
+    - bridge-hotfix-PES-285-1.0.1.zip
+  rebuild:
+    - None
+  download:
+    - None
+  uninstall:
+    - None
+  rebuild:
+    - None
+groovy_scripts:
+  path: ./groovy_scripts
+  run_list:
+    - main.groovy

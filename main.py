@@ -1,35 +1,21 @@
-from git import Repo, cmd
 
 import subprocess as sp
 import os
 import yaml
 import bs4 as bs
 import requests
+import xml.etree.ElementTree as ET
+import xmltodict
 
 '''Constants'''
 SUCCESS = 0
 FAILURE = 1
 
-toolkit_path = f"{os.getcwd()}CQ-Unix-Toolkit"
-'''CQ-Unix-Toolkit shortcuts'''
-cqls = f"{toolkit_path}/cqls"
-
-
 # TODO: add logger
-# think whether installation logic should be inside CQInstance or CQPackage class
+# think  whether installation logic should be inside CQInstance or CQPackage class
 
 with open('config.yaml') as config_data:
     config = yaml.full_load(config_data)
-
-if os.path.exists(toolkit_path):
-    # print("CQ-Unix-Toolkit directory already exists. Running 'git pull'")
-    try:
-        cmd.Git(toolkit_path).pull()
-    except Exception as e:
-        print(f"Failed to run 'git pull': {str(e)}")
-else:
-    print('cloning...')
-    Repo.clone_from(config['toolkit_url'], toolkit_path)
 
 class CQInstance:
     def __init__(self, protocol, ip, port, user='admin', password='admin'):
@@ -45,13 +31,6 @@ class CQInstance:
     def auth(self):
         '''Return default auth format for requests'''
         return self.user, self.password
-
-    # def package_list_gen_cqls(self):
-    #     '''Lists all of the packages installed on the instance using cqls'''
-    #     package_list = sp.Popen([cqls, '-i', self.url],
-    #             stdout=sp.PIPE,
-    #             stderr=sp.STDOUT)
-    #     self.package_list = package_list.communicate()
     
     def package_dict_gen(self):
         '''Creates a dictionary of all of the packages installed on the instance and its versions'''
@@ -62,16 +41,26 @@ class CQInstance:
                 files=form_data,
                 auth=self.auth())
 
-        package_list = [i.text for i in bs.BeautifulSoup(response.text, 'xml').find_all(['name', 'version'])]
-        for i in range(0, len(package_list), 2):
-            self.package_dict[package_list[i]] = package_list[i+1]
+        # root = ET.fromstring(response.text)
+        # for package in root.findall('response/data/packages/package'):
+        #     name = package.find('name').text
+        #     if name == 'bridge-hotfix-PES-285':
+        #         version = package.find('version').text
+        #         last_unpacked = package.find('lastUnpacked').text
+        #         print(name, version, last_unpacked)
+
+        xml_response = xmltodict.parse(response.text)
+        self.package_dict = xml_response['crx']['response']['data']['packages']['package']
+
+    def package_find(self, package_name):
+        for p in self.package_dict:
+            if p['name'] == package_name:
+                return p
 
     def package_upload(self, file_path):
         '''Uploads package to a server, doesn't install it, returns xml in response'''
         # TODO: should be using package as an argument?
-        headers = {
-            'Referrer': self.refferer
-        }
+        headers = { 'Referrer': self.refferer }
         form_data = {
             'file' : (file_path, open(file_path, 'rb'), 'appliation/zip', {}),
             'name': os.path.basename(file_path).rstrip('.zip'),
@@ -149,7 +138,7 @@ class CQInstance:
         print(response.status_code, response.text)
 
 class CQPackage:
-    def __init__(self, name, version, group):
+    def __init__(self, name, version, group='unset'):
         self.name = name
         self.version = version
         self.group = group
@@ -160,14 +149,20 @@ if __name__ == "__main__":
     author_instance = CQInstance(instances['protocol'], instances['author']['ip'], instances['author']['port'])
     publish_instance = CQInstance(instances['protocol'], instances['publish']['ip'], instances['publish']['port'])
 
-    author_instance.package_dict_gen()
-
     bridge_hotfix_PES_285 = CQPackage('bridge-hotfix-PES-285', '1.0.1', 'com.cognifide.zg')
+    publish_instance.package_upload('./bridge-hotfix-PES-285-1.0.1.zip')
 
-    author_instance.package_upload('./bridge-hotfix-PES-285-1.0.1.zip')
-    author_instance.package_rebuild(bridge_hotfix_PES_285)
+    publish_instance.package_dict_gen()
+    print(publish_instance.package_find(bridge_hotfix_PES_285.name)['version'])
 
-    bridge_core = CQPackage('bridge-core', '6.5.0.0', 'com.cognifide.bridge')
+    # for key, value in publish_instance.package_dict.items():
+    #     print(f"{key}\t: {value}")
+
+
+
+    #author_instance.package_rebuild(bridge_hotfix_PES_285)
+
+    #bridge_core = CQPackage('bridge-core', '6.5.0.0', 'com.cognifide.bridge')
 
     #publish_instance.package_download(bridge_core)
     #publish_instance.package_uninstall(bridge_core)
