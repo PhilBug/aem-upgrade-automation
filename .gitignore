@@ -4,6 +4,7 @@ packages/
 include/
 cq-unix-toolkit/
 *.zip
+.vscode/
 
 .DS_Store
 

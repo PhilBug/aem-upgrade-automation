@@ -1,12 +1,13 @@
 toolkit_url: https://github.com/Cognifide/CQ-Unix-Toolkit.git
+
 instances:
   protocol: http
   version: 6.5
   author:
-    ip: 192.168.2.254
+    ip: 192.168.2.123
     port: 4502
   publish:
-    ip: 192.168.2.254
+    ip: 192.168.2.123
     port: 4503
 packages:
   path: ./packages
@@ -19,9 +20,10 @@ packages:
     - None
   uninstall:
     - None
-  rebuild:
-    - None
-groovy_scripts:
-  path: ./groovy_scripts
-  run_list:
-    - main.groovy
+groovy:
+  console:
+    url: https://github.com/icfnext/aem-groovy-console/releases/download/13.0.0/aem-groovy-console-13.0.0.zip
+  scripts:
+    path: ./groovy_scripts
+    run_list:
+      - main.groovy

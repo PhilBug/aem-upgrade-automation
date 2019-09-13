@@ -11,6 +11,7 @@
   * list
   * remove
   * reinstall
+- CMD argparse
 - Class config file parser
 - Class config file handler/executor
 - Class groovy executor
