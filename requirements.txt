@@ -1,5 +1,5 @@
 # GitPython==3.0.2
-PyYaml==5.1.2
+PyYaml==5.4
 # BeautifulSoup4==4.8.0
 lxml==4.4.1
 requests==2.22.0
